@@ -1,41 +1,66 @@
-# task-flow-api
+# fluxo-tarefas-api
 
-API REST para gerenciamento de tarefas com autenticação de usuários.
+API REST para gerenciamento de fluxo de tarefas desenvolvida com Django REST Framework.
 
-## Sobre o projeto
+## Stack Utilizada
 
-O task-flow-api é uma API construída com foco em boas práticas de desenvolvimento backend. O objetivo é oferecer uma base sólida para gerenciamento de tarefas, com autenticação segura, documentação completa e cobertura de testes.
+- **Python 3.12**
+- **Django 5.1** & **Django REST Framework**
+- **PostgreSQL 16** (Banco de dados relacional)
+- **Redis 7** (Cache e mensageria)
+- **Docker & Docker Compose** (Containerização do ambiente)
+- **django-environ** (Gerenciamento de configurações e variáveis de ambiente)
+- **django-cors-headers** (Controle de CORS)
 
-## Tecnologias
+## Estrutura do Projeto
 
-- Python & Django
-- Django REST Framework
-- PostgreSQL
-- SimpleJWT
-- Celery + Redis
-- Docker & Docker Compose
-- Pytest
+```text
+fluxo-tarefas-api/
+├── apps/                 # Módulos/aplicações Django do projeto
+├── config/               # Configurações do projeto
+│   ├── settings/         # Configurações modularizadas
+│   │   ├── __init__.py
+│   │   ├── base.py       # Configurações base compartilhadas
+│   │   ├── dev.py        # Configurações de desenvolvimento
+│   │   └── production.py # Configurações de produção
+│   ├── asgi.py
+│   ├── urls.py
+│   └── wsgi.py
+├── .dockerignore
+├── .env.example          # Modelo de variáveis de ambiente
+├── .gitignore
+├── docker-compose.yml    # Orquestração dos containers (web, db, redis)
+├── Dockerfile            # Imagem multi-stage Python 3.12
+├── manage.py
+├── README.md
+└── requirements.txt      # Dependências do projeto
+```
 
-## Funcionalidades
+## Instruções de Setup
 
-- Cadastro e autenticação de usuários com JWT
-- Refresh token e controle de sessão
-- CRUD completo de tarefas
-- Filtros por status, prioridade e data
-- Documentação automática via Swagger
-- Testes unitários e de integração
-
-## Arquitetura
-
-O projeto segue uma arquitetura em camadas, separando responsabilidades entre Controllers, Services e Repositories. Cada módulo (users, tasks) é isolado dentro da pasta `apps/`.
-
-## Como rodar
+### 1. Clonar o repositório
 
 ```bash
-git clone https://github.com/sua-org/task-flow-api
-cd task-flow-api
+git clone https://github.com/JhoneLabs/fluxo-tarefas-api.git
+cd fluxo-tarefas-api
+```
+
+### 2. Configurar as variáveis de ambiente
+
+Copie o arquivo de exemplo `.env.example` para `.env`:
+
+```bash
 cp .env.example .env
+```
+
+### 3. Construir e executar com Docker Compose
+
+Suba os serviços (`web`, `db` e `redis`):
+
+```bash
 docker compose up --build
 ```
 
-A API estará disponível em `http://localhost:8000` e a documentação em `http://localhost:8000/api/docs`.
+A API estará acessível em:
+- **API / Página inicial**: [http://localhost:8000](http://localhost:8000)
+- **Django Admin**: [http://localhost:8000/admin](http://localhost:8000/admin)
