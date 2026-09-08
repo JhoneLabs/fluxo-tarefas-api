@@ -20,18 +20,31 @@ O projeto adota uma arquitetura em camadas dentro de cada app (`views/controller
 ```text
 fluxo-tarefas-api/
 ├── apps/
-│   └── usuarios/         # App de usuários e autenticação
+│   ├── usuarios/         # App de usuários e autenticação
+│   │   ├── migrations/
+│   │   ├── tests/
+│   │   │   ├── __init__.py
+│   │   │   └── test_auth.py
+│   │   ├── __init__.py
+│   │   ├── apps.py
+│   │   ├── models.py       # Modelo Usuario (AbstractUser)
+│   │   ├── repositories.py # Camada de acesso a dados (ORM)
+│   │   ├── serializers.py  # Validação e serialização
+│   │   ├── services.py     # Camada de regras de negócio
+│   │   ├── urls.py         # Rotas da API de usuários
+│   │   └── views.py        # Controllers / Handlers HTTP
+│   └── tarefas/          # App de tarefas
 │       ├── migrations/
 │       ├── tests/
 │       │   ├── __init__.py
-│       │   └── test_auth.py
+│       │   └── test_tarefas.py
 │       ├── __init__.py
 │       ├── apps.py
-│       ├── models.py       # Modelo Usuario (AbstractUser)
-│       ├── repositories.py # Camada de acesso a dados (ORM)
+│       ├── models.py       # Modelo Tarefa (com status e prioridade)
+│       ├── repositories.py # Consultas e persistência isoladas por owner
 │       ├── serializers.py  # Validação e serialização
-│       ├── services.py     # Camada de regras de negócio
-│       ├── urls.py         # Rotas da API de usuários
+│       ├── services.py     # Regras de negócio e proteção 404
+│       ├── urls.py         # Rotas da API de tarefas
 │       └── views.py        # Controllers / Handlers HTTP
 ├── config/               # Configurações do projeto
 │   ├── settings/         # Configurações modularizadas
@@ -92,7 +105,7 @@ docker compose exec web python manage.py migrate
 ### 5. Executar os Testes Automatizados
 
 ```bash
-docker compose exec web python manage.py test usuarios
+docker compose exec web python manage.py test usuarios tarefas
 ```
 
 ---
@@ -109,7 +122,7 @@ Todas as rotas de usuários estão sob o prefixo `/api/usuarios/`.
 | `POST` | `/api/usuarios/logout/` | Invalida o token de refresh (blacklist) | `Bearer <access_token>` |
 | `GET` | `/api/usuarios/me/` | Retorna o perfil do usuário autenticado | `Bearer <access_token>` |
 
-### Exemplos de Requisição
+### Exemplos de Autenticação
 
 #### 1. Cadastro de Usuário (`POST /api/usuarios/cadastro/`)
 ```json
@@ -142,34 +155,98 @@ Todas as rotas de usuários estão sob o prefixo `/api/usuarios/`.
 ```http
 Authorization: Bearer <JWT_ACCESS_TOKEN>
 ```
-**Resposta:**
-```json
-{
-  "id": 1,
-  "username": "jhone_dev",
-  "email": "jhone@example.com",
-  "first_name": "Jhone",
-  "last_name": "Rodrigues",
-  "data_criacao": "2026-09-08T09:34:04.189658-03:00",
-  "data_atualizacao": "2026-09-08T09:34:04.189665-03:00"
-}
-```
 
-#### 4. Renovar Access Token (`POST /api/usuarios/refresh/`)
-```json
-{
-  "refresh": "<JWT_REFRESH_TOKEN>"
-}
-```
+---
 
-#### 5. Logout (`POST /api/usuarios/logout/`)
+## Endpoints de Tarefas
+
+Todas as rotas de tarefas estão sob o prefixo `/api/tarefas/` e exigem autenticação JWT (`Authorization: Bearer <access_token>`).
+
+> **Isolamento por Proprietário (Owner)**: O usuário autenticado só pode visualizar, alterar ou excluir suas próprias tarefas. Qualquer tentativa de manipular tarefas pertencentes a outro usuário resultará em **HTTP 404 (Not Found)** para evitar o vazamento da existência de registros alheios.
+
+| Método | Endpoint | Descrição | Autenticação |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/tarefas/` | Lista apenas as tarefas do usuário autenticado | `Bearer <access_token>` |
+| `POST` | `/api/tarefas/` | Cria uma nova tarefa vinculada ao usuário | `Bearer <access_token>` |
+| `GET` | `/api/tarefas/{id}/` | Detalhes de uma tarefa específica do usuário | `Bearer <access_token>` |
+| `PATCH` | `/api/tarefas/{id}/` | Atualização parcial de tarefa | `Bearer <access_token>` |
+| `PUT` | `/api/tarefas/{id}/` | Atualização completa de tarefa | `Bearer <access_token>` |
+| `DELETE` | `/api/tarefas/{id}/` | Exclusão de tarefa | `Bearer <access_token>` |
+
+### Valores Válidos para Campos
+
+- **`status_tarefa`**: `pendente` *(padrão)*, `em_andamento`, `concluida`
+- **`prioridade`**: `baixa`, `media` *(padrão)*, `alta`
+
+### Exemplos de Requisição de Tarefas
+
+#### 1. Criar Tarefa (`POST /api/tarefas/`)
 **Headers:**
 ```http
 Authorization: Bearer <JWT_ACCESS_TOKEN>
+Content-Type: application/json
 ```
 **Payload:**
 ```json
 {
-  "refresh": "<JWT_REFRESH_TOKEN>"
+  "titulo": "Finalizar módulo de autenticação",
+  "descricao": "Configurar expiração e rotação de JWT no settings",
+  "status_tarefa": "pendente",
+  "prioridade": "alta",
+  "data_vencimento": "2026-09-15"
 }
 ```
+**Resposta (HTTP 201 Created):**
+```json
+{
+  "id": 1,
+  "titulo": "Finalizar módulo de autenticação",
+  "descricao": "Configurar expiração e rotação de JWT no settings",
+  "status_tarefa": "pendente",
+  "prioridade": "alta",
+  "data_vencimento": "2026-09-15",
+  "data_criacao": "2026-09-08T09:40:24.189658-03:00",
+  "data_atualizacao": "2026-09-08T09:40:24.189665-03:00"
+}
+```
+
+#### 2. Listar Tarefas (`GET /api/tarefas/`)
+**Resposta (HTTP 200 OK):**
+```json
+[
+  {
+    "id": 1,
+    "titulo": "Finalizar módulo de autenticação",
+    "descricao": "Configurar expiração e rotação de JWT no settings",
+    "status_tarefa": "pendente",
+    "prioridade": "alta",
+    "data_vencimento": "2026-09-15",
+    "data_criacao": "2026-09-08T09:40:24.189658-03:00",
+    "data_atualizacao": "2026-09-08T09:40:24.189665-03:00"
+  }
+]
+```
+
+#### 3. Atualizar Status (`PATCH /api/tarefas/{id}/`)
+**Payload:**
+```json
+{
+  "status_tarefa": "concluida"
+}
+```
+**Resposta (HTTP 200 OK):**
+```json
+{
+  "id": 1,
+  "titulo": "Finalizar módulo de autenticação",
+  "descricao": "Configurar expiração e rotação de JWT no settings",
+  "status_tarefa": "concluida",
+  "prioridade": "alta",
+  "data_vencimento": "2026-09-15",
+  "data_criacao": "2026-09-08T09:40:24.189658-03:00",
+  "data_atualizacao": "2026-09-08T09:45:10.123456-03:00"
+}
+```
+
+#### 4. Deletar Tarefa (`DELETE /api/tarefas/{id}/`)
+**Resposta (HTTP 204 No Content)**
