@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework import status
@@ -12,7 +12,8 @@ Usuario = get_user_model()
 
 class TarefasIntegrationTestCase(APITestCase):
     """
-    Testes de integração para o CRUD de tarefas com isolamento por usuário proprietário.
+    Testes de integração para o CRUD de tarefas com isolamento por owner,
+    além de filtros, ordenação e paginação no endpoint de listagem.
     """
 
     def setUp(self):
@@ -81,8 +82,8 @@ class TarefasIntegrationTestCase(APITestCase):
         response = self.client.get(self.list_create_url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 2)
-        titulos = [item['titulo'] for item in response.data]
+        self.assertEqual(response.data['count'], 2)
+        titulos = [item['titulo'] for item in response.data['results']]
         self.assertIn('Tarefa A1', titulos)
         self.assertIn('Tarefa A2', titulos)
         self.assertNotIn('Tarefa B1', titulos)
@@ -126,9 +127,7 @@ class TarefasIntegrationTestCase(APITestCase):
         tarefa_b = Tarefa.objects.create(titulo='Tarefa de B', usuario=self.user_b)
         detail_url = reverse('tarefa-detail', kwargs={'pk': tarefa_b.id})
 
-        # Autenticado como user_a tentando acessar tarefa de user_b
         response = self.client.get(detail_url)
-
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_atualizar_tarefa_outro_usuario_retorna_404(self):
@@ -137,7 +136,6 @@ class TarefasIntegrationTestCase(APITestCase):
         detail_url = reverse('tarefa-detail', kwargs={'pk': tarefa_b.id})
 
         response = self.client.patch(detail_url, {'titulo': 'Tentativa de alteração'})
-
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         tarefa_b.refresh_from_db()
         self.assertEqual(tarefa_b.titulo, 'Tarefa de B')
@@ -148,13 +146,12 @@ class TarefasIntegrationTestCase(APITestCase):
         detail_url = reverse('tarefa-detail', kwargs={'pk': tarefa_b.id})
 
         response = self.client.delete(detail_url)
-
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertTrue(Tarefa.objects.filter(pk=tarefa_b.id).exists())
 
     def test_endpoints_sem_autenticacao_retornam_401(self):
         """Requisições sem cabeçalho Authorization devem ser barradas com HTTP 401."""
-        self.client.credentials()  # remove credentials
+        self.client.credentials()
 
         tarefa = Tarefa.objects.create(titulo='Tarefa Pública?', usuario=self.user_a)
         detail_url = reverse('tarefa-detail', kwargs={'pk': tarefa.id})
@@ -164,3 +161,126 @@ class TarefasIntegrationTestCase(APITestCase):
         self.assertEqual(self.client.get(detail_url).status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(self.client.patch(detail_url, {'titulo': 'Alt'}).status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(self.client.delete(detail_url).status_code, status.HTTP_401_UNAUTHORIZED)
+
+    # ==========================================
+    # Novos testes: Filtros, Ordenação e Paginação
+    # ==========================================
+
+    def test_filtro_status_tarefa_isolado(self):
+        """Deve filtrar tarefas estritamente pelo status_tarefa informado."""
+        Tarefa.objects.create(titulo='T1', status_tarefa='pendente', usuario=self.user_a)
+        Tarefa.objects.create(titulo='T2', status_tarefa='em_andamento', usuario=self.user_a)
+        Tarefa.objects.create(titulo='T3', status_tarefa='concluida', usuario=self.user_a)
+
+        res_pendente = self.client.get(self.list_create_url, {'status_tarefa': 'pendente'})
+        self.assertEqual(res_pendente.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_pendente.data['count'], 1)
+        self.assertEqual(res_pendente.data['results'][0]['titulo'], 'T1')
+
+        res_concluida = self.client.get(self.list_create_url, {'status_tarefa': 'concluida'})
+        self.assertEqual(res_concluida.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_concluida.data['count'], 1)
+        self.assertEqual(res_concluida.data['results'][0]['titulo'], 'T3')
+
+    def test_filtro_prioridade_isolado(self):
+        """Deve filtrar tarefas estritamente pela prioridade informada."""
+        Tarefa.objects.create(titulo='T_Baixa', prioridade='baixa', usuario=self.user_a)
+        Tarefa.objects.create(titulo='T_Media', prioridade='media', usuario=self.user_a)
+        Tarefa.objects.create(titulo='T_Alta', prioridade='alta', usuario=self.user_a)
+
+        response = self.client.get(self.list_create_url, {'prioridade': 'alta'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['titulo'], 'T_Alta')
+
+    def test_filtros_combinados(self):
+        """Deve permitir combinar status_tarefa e prioridade via query params."""
+        Tarefa.objects.create(titulo='Alvo', status_tarefa='pendente', prioridade='alta', usuario=self.user_a)
+        Tarefa.objects.create(titulo='Outra 1', status_tarefa='pendente', prioridade='baixa', usuario=self.user_a)
+        Tarefa.objects.create(titulo='Outra 2', status_tarefa='concluida', prioridade='alta', usuario=self.user_a)
+
+        response = self.client.get(self.list_create_url, {
+            'status_tarefa': 'pendente',
+            'prioridade': 'alta'
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['titulo'], 'Alvo')
+
+    def test_filtro_intervalo_data_vencimento(self):
+        """Deve filtrar tarefas por data_vencimento_inicio (gte) e data_vencimento_fim (lte)."""
+        hoje = date.today()
+        ontem = hoje - timedelta(days=1)
+        amanha = hoje + timedelta(days=1)
+        depois_amanha = hoje + timedelta(days=2)
+
+        Tarefa.objects.create(titulo='Ontem', data_vencimento=ontem, usuario=self.user_a)
+        Tarefa.objects.create(titulo='Hoje', data_vencimento=hoje, usuario=self.user_a)
+        Tarefa.objects.create(titulo='Amanha', data_vencimento=amanha, usuario=self.user_a)
+        Tarefa.objects.create(titulo='Depois', data_vencimento=depois_amanha, usuario=self.user_a)
+
+        # Filtro de hoje até amanhã
+        response = self.client.get(self.list_create_url, {
+            'data_vencimento_inicio': str(hoje),
+            'data_vencimento_fim': str(amanha)
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 2)
+        titulos = [t['titulo'] for t in response.data['results']]
+        self.assertIn('Hoje', titulos)
+        self.assertIn('Amanha', titulos)
+
+    def test_ordenacao(self):
+        """Deve permitir ordenação ascendente e descendente via parâmetro ordering."""
+        hoje = date.today()
+        Tarefa.objects.create(titulo='T1', data_vencimento=hoje + timedelta(days=10), prioridade='alta', usuario=self.user_a)
+        Tarefa.objects.create(titulo='T2', data_vencimento=hoje + timedelta(days=2), prioridade='baixa', usuario=self.user_a)
+        Tarefa.objects.create(titulo='T3', data_vencimento=hoje + timedelta(days=5), prioridade='media', usuario=self.user_a)
+
+        # Ordenação por data_vencimento ascendente
+        res_asc = self.client.get(self.list_create_url, {'ordering': 'data_vencimento'})
+        self.assertEqual(res_asc.status_code, status.HTTP_200_OK)
+        titulos_asc = [t['titulo'] for t in res_asc.data['results']]
+        self.assertEqual(titulos_asc, ['T2', 'T3', 'T1'])
+
+        # Ordenação por data_vencimento descendente
+        res_desc = self.client.get(self.list_create_url, {'ordering': '-data_vencimento'})
+        self.assertEqual(res_desc.status_code, status.HTTP_200_OK)
+        titulos_desc = [t['titulo'] for t in res_desc.data['results']]
+        self.assertEqual(titulos_desc, ['T1', 'T3', 'T2'])
+
+    def test_paginacao_estrutura_e_defaults(self):
+        """Deve retornar a estrutura paginada (count, next, previous, results) com page_size padrão de 10."""
+        for i in range(15):
+            Tarefa.objects.create(titulo=f'Tarefa {i+1}', usuario=self.user_a)
+
+        response = self.client.get(self.list_create_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 15)
+        self.assertIsNotNone(response.data['next'])
+        self.assertIsNone(response.data['previous'])
+        self.assertEqual(len(response.data['results']), 10)
+
+        # Segunda página
+        res_pag2 = self.client.get(response.data['next'])
+        self.assertEqual(res_pag2.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res_pag2.data['results']), 5)
+        self.assertIsNone(res_pag2.data['next'])
+        self.assertIsNotNone(res_pag2.data['previous'])
+
+    def test_paginacao_customizada_e_limite_maximo(self):
+        """Deve respeitar o parâmetro page_size ajustado pelo cliente e o limite máximo de 50."""
+        for i in range(25):
+            Tarefa.objects.create(titulo=f'Tarefa {i+1}', usuario=self.user_a)
+
+        # page_size=5 customizado
+        res_5 = self.client.get(self.list_create_url, {'page_size': 5})
+        self.assertEqual(res_5.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res_5.data['results']), 5)
+
+        # Tentativa de solicitar page_size excessivo (ex: 100) deve ser limitada ao max_page_size (50)
+        res_100 = self.client.get(self.list_create_url, {'page_size': 100})
+        self.assertEqual(res_100.status_code, status.HTTP_200_OK)
+        # Como temos 25 tarefas criadas e o teto é 50, retorna as 25 em uma única página
+        self.assertEqual(len(res_100.data['results']), 25)
+        self.assertIsNone(res_100.data['next'])

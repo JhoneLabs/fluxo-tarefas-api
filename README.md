@@ -7,6 +7,7 @@ API REST para gerenciamento de fluxo de tarefas desenvolvida com Django REST Fra
 - **Python 3.12**
 - **Django 5.1** & **Django REST Framework**
 - **SimpleJWT** (Autenticação baseada em JSON Web Tokens com blacklist)
+- **django-filter** (Filtragem dinâmica e ordenação de recursos)
 - **PostgreSQL 16** (Banco de dados relacional)
 - **Redis 7** (Cache e mensageria)
 - **Docker & Docker Compose** (Containerização do ambiente)
@@ -40,7 +41,9 @@ fluxo-tarefas-api/
 │       │   └── test_tarefas.py
 │       ├── __init__.py
 │       ├── apps.py
+│       ├── filters.py      # Filtros com django-filter
 │       ├── models.py       # Modelo Tarefa (com status e prioridade)
+│       ├── pagination.py   # Paginação customizada com page_size
 │       ├── repositories.py # Consultas e persistência isoladas por owner
 │       ├── serializers.py  # Validação e serialização
 │       ├── services.py     # Regras de negócio e proteção 404
@@ -166,7 +169,7 @@ Todas as rotas de tarefas estão sob o prefixo `/api/tarefas/` e exigem autentic
 
 | Método | Endpoint | Descrição | Autenticação |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/api/tarefas/` | Lista apenas as tarefas do usuário autenticado | `Bearer <access_token>` |
+| `GET` | `/api/tarefas/` | Lista tarefas do usuário (com paginação, filtros e ordenação) | `Bearer <access_token>` |
 | `POST` | `/api/tarefas/` | Cria uma nova tarefa vinculada ao usuário | `Bearer <access_token>` |
 | `GET` | `/api/tarefas/{id}/` | Detalhes de uma tarefa específica do usuário | `Bearer <access_token>` |
 | `PATCH` | `/api/tarefas/{id}/` | Atualização parcial de tarefa | `Bearer <access_token>` |
@@ -177,6 +180,58 @@ Todas as rotas de tarefas estão sob o prefixo `/api/tarefas/` e exigem autentic
 
 - **`status_tarefa`**: `pendente` *(padrão)*, `em_andamento`, `concluida`
 - **`prioridade`**: `baixa`, `media` *(padrão)*, `alta`
+
+---
+
+### Filtros, Ordenação e Paginação (`GET /api/tarefas/`)
+
+O endpoint de listagem conta com suporte a filtros combináveis, ordenação e paginação padrão do Django REST Framework:
+
+#### 1. Filtros Disponíveis (via Query Params)
+- **`status_tarefa`**: Filtro exato (`pendente`, `em_andamento`, `concluida`).
+- **`prioridade`**: Filtro exato (`baixa`, `media`, `alta`).
+- **`data_vencimento_inicio`**: Filtra tarefas com data de vencimento maior ou igual à data fornecida (`YYYY-MM-DD`).
+- **`data_vencimento_fim`**: Filtra tarefas com data de vencimento menor ou igual à data fornecida (`YYYY-MM-DD`).
+
+*Todos os filtros podem ser combinados livremente entre si.*
+
+#### 2. Ordenação (`ordering`)
+Permite ordenar de forma ascendente ou descendente (prefixando com `-`) pelos seguintes campos:
+- `data_vencimento` / `-data_vencimento`
+- `data_criacao` / `-data_criacao`
+- `prioridade` / `-prioridade`
+
+*Ordenação padrão*: `-data_criacao` (tarefas mais recentes primeiro).
+
+#### 3. Paginação (`page` e `page_size`)
+- Tamanho de página padrão: **10** itens.
+- Parâmetro `page`: Número da página solicitada (ex: `?page=2`).
+- Parâmetro `page_size`: Permite que o cliente altere a quantidade de itens por página (ex: `?page_size=20`).
+- **Limite Máximo**: O parâmetro `page_size` é limitado a no máximo **50** itens por página.
+
+#### Exemplos de Consultas:
+
+- **Filtrar apenas por status:**
+  ```http
+  GET /api/tarefas/?status_tarefa=pendente
+  ```
+
+- **Filtrar por prioridade e ordenar por vencimento:**
+  ```http
+  GET /api/tarefas/?prioridade=alta&ordering=data_vencimento
+  ```
+
+- **Filtro combinado (status + prioridade) com ordenação mais recente:**
+  ```http
+  GET /api/tarefas/?status_tarefa=em_andamento&prioridade=alta&ordering=-data_criacao
+  ```
+
+- **Filtrar por intervalo de vencimento com paginação customizada:**
+  ```http
+  GET /api/tarefas/?data_vencimento_inicio=2026-09-01&data_vencimento_fim=2026-09-30&page=1&page_size=25
+  ```
+
+---
 
 ### Exemplos de Requisição de Tarefas
 
@@ -210,21 +265,26 @@ Content-Type: application/json
 }
 ```
 
-#### 2. Listar Tarefas (`GET /api/tarefas/`)
+#### 2. Listar Tarefas Paginadas (`GET /api/tarefas/?page=1&page_size=10`)
 **Resposta (HTTP 200 OK):**
 ```json
-[
-  {
-    "id": 1,
-    "titulo": "Finalizar módulo de autenticação",
-    "descricao": "Configurar expiração e rotação de JWT no settings",
-    "status_tarefa": "pendente",
-    "prioridade": "alta",
-    "data_vencimento": "2026-09-15",
-    "data_criacao": "2026-09-08T09:40:24.189658-03:00",
-    "data_atualizacao": "2026-09-08T09:40:24.189665-03:00"
-  }
-]
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "titulo": "Finalizar módulo de autenticação",
+      "descricao": "Configurar expiração e rotação de JWT no settings",
+      "status_tarefa": "pendente",
+      "prioridade": "alta",
+      "data_vencimento": "2026-09-15",
+      "data_criacao": "2026-09-08T09:40:24.189658-03:00",
+      "data_atualizacao": "2026-09-08T09:40:24.189665-03:00"
+    }
+  ]
+}
 ```
 
 #### 3. Atualizar Status (`PATCH /api/tarefas/{id}/`)
