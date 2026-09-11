@@ -100,6 +100,9 @@ docker compose up --build
 A API estará acessível em:
 - **API / Página inicial**: [http://localhost:8000](http://localhost:8000)
 - **Django Admin**: [http://localhost:8000/admin](http://localhost:8000/admin)
+- **Swagger UI**: [http://localhost:8000/api/docs/](http://localhost:8000/api/docs/)
+- **ReDoc**: [http://localhost:8000/api/redoc/](http://localhost:8000/api/redoc/)
+- **OpenAPI Schema**: [http://localhost:8000/api/schema/](http://localhost:8000/api/schema/)
 
 ### 4. Executar Migrações
 
@@ -114,6 +117,17 @@ docker compose exec web python manage.py migrate
 ```bash
 docker compose exec web python manage.py test usuarios tarefas
 ```
+
+---
+
+## Documentação Interativa da API (Swagger / OpenAPI)
+
+A API conta com documentação interativa e especificação completa no padrão OpenAPI 3.0 via `drf-spectacular`:
+
+- **Swagger UI**: [http://localhost:8000/api/docs/](http://localhost:8000/api/docs/) — Interface interativa que permite testar endpoints, autenticação JWT Bearer, payloads e filtros diretamente pelo navegador.
+- **ReDoc**: [http://localhost:8000/api/redoc/](http://localhost:8000/api/redoc/) — Visualização moderna e detalhada de todos os schemas e modelos de dados da API.
+- **OpenAPI Schema (YAML/JSON)**: [http://localhost:8000/api/schema/](http://localhost:8000/api/schema/) — Definição bruta OpenAPI 3.0 para consumo em ferramentas externas (Postman, Insomnia, geradores de client SDK, etc.).
+
 
 ---
 

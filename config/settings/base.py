@@ -45,6 +45,7 @@ THIRD_PARTY_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'django_filters',
     'django_celery_beat',
+    'drf_spectacular',
     'corsheaders',
 ]
 
@@ -167,6 +168,7 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PAGINATION_CLASS': 'tarefas.pagination.TarefaPagination',
     'PAGE_SIZE': 10,
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
@@ -176,6 +178,15 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.FormParser',
         'rest_framework.parsers.MultiPartParser',
     ],
+}
+
+# Spectacular / OpenAPI settings
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Fluxo Tarefas API',
+    'DESCRIPTION': 'API REST para gerenciamento de fluxo de tarefas com autenticação JWT e processamento assíncrono via Celery.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
 }
 
 # SimpleJWT settings
