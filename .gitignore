@@ -50,3 +50,10 @@ staticfiles/
 # Operating System
 .DS_Store
 Thumbs.db
+
+# Testing & Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+

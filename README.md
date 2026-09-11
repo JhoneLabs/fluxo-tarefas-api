@@ -1,12 +1,18 @@
 # fluxo-tarefas-api
 
+![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)
+![Python](https://img.shields.io/badge/python-3.12-blue)
+![Django](https://img.shields.io/badge/django-5.1-green)
+
 API REST para gerenciamento de fluxo de tarefas desenvolvida com Django REST Framework.
 
 ## Stack Utilizada
 
 - **Python 3.12**
 - **Django 5.1** & **Django REST Framework**
+- **Pytest**, **pytest-django**, **pytest-cov** & **factory_boy** (Suíte e cobertura de testes automatizados)
 - **Celery 5.4** & **django-celery-beat** (Filas assíncronas e agendamento de tarefas periódicas)
+- **drf-spectacular** (Documentação automática Swagger UI / OpenAPI 3.0)
 - **SimpleJWT** (Autenticação baseada em JSON Web Tokens com blacklist)
 - **django-filter** (Filtragem dinâmica e ordenação de recursos)
 - **PostgreSQL 16** (Banco de dados relacional)
@@ -14,6 +20,7 @@ API REST para gerenciamento de fluxo de tarefas desenvolvida com Django REST Fra
 - **Docker & Docker Compose** (Containerização do ambiente)
 - **django-environ** (Gerenciamento de configurações e variáveis de ambiente)
 - **django-cors-headers** (Controle de CORS)
+
 
 ## Estrutura do Projeto
 
@@ -114,9 +121,44 @@ docker compose exec web python manage.py migrate
 
 ### 5. Executar os Testes Automatizados
 
+O projeto conta com uma suíte de **102 testes automatizados** utilizando **Pytest**, **pytest-django**, **pytest-cov** e **factory_boy**, alcançando **98% de cobertura de código** nos apps `usuarios` e `tarefas` (com **100% de cobertura nas camadas de serviços e repositórios**).
+
+#### Executar com Pytest (Recomendado):
+
+```bash
+# Executa toda a suíte de testes e exibe relatório de cobertura no terminal
+docker compose exec web pytest
+
+# Executar com relatório de cobertura em HTML (gerado em htmlcov/)
+docker compose exec web pytest --cov-report=html
+
+# Executar apenas testes de um app específico
+docker compose exec web pytest apps/usuarios/
+docker compose exec web pytest apps/tarefas/
+```
+
+#### Executar com o test runner do Django:
+
 ```bash
 docker compose exec web python manage.py test usuarios tarefas
 ```
+
+#### Resumo de Cobertura de Testes (`pytest --cov`):
+
+| Módulo / Camada | Statements | Miss | Cobertura |
+| :--- | :--- | :--- | :--- |
+| `apps/usuarios/services.py` | 36 | 0 | **100%** |
+| `apps/usuarios/repositories.py` | 31 | 0 | **100%** |
+| `apps/usuarios/views.py` | 43 | 0 | **100%** |
+| `apps/usuarios/serializers.py` | 20 | 0 | **100%** |
+| `apps/tarefas/services.py` | 38 | 0 | **100%** |
+| `apps/tarefas/repositories.py` | 25 | 0 | **100%** |
+| `apps/tarefas/views.py` | 68 | 3 | **96%** |
+| `apps/tarefas/tasks.py` (Celery) | 23 | 0 | **100%** |
+| `apps/tarefas/filters.py` | 10 | 0 | **100%** |
+| `apps/tarefas/pagination.py` | 5 | 0 | **100%** |
+| **Total do Projeto** | **1076** | **22** | **98%** |
+
 
 ---
 
