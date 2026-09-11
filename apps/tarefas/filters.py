@@ -1,4 +1,5 @@
 import django_filters
+
 from tarefas.models import Tarefa
 
 

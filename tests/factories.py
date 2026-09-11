@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+
 import factory
 from django.contrib.auth import get_user_model
 from tarefas.models import PrioridadeTarefa, StatusTarefa, Tarefa
@@ -22,7 +23,8 @@ class UsuarioFactory(factory.django.DjangoModelFactory):
     def _create(cls, model_class, *args, **kwargs):
         """Utiliza create_user para que a senha seja hashada corretamente."""
         password = kwargs.pop('password', 'SenhaForte123!@#')
-        return model_class.objects.create_user(password=password, *args, **kwargs)
+        return model_class.objects.create_user(*args, password=password, **kwargs)
+
 
 
 class TarefaFactory(factory.django.DjangoModelFactory):

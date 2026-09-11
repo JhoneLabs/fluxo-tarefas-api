@@ -13,7 +13,6 @@ from tarefas.serializers import TarefaSerializer
 from tarefas.services import TarefaService
 
 
-
 @extend_schema_view(
     get=extend_schema(
         tags=['Tarefas'],

@@ -1,5 +1,7 @@
 from typing import Any, Dict, Optional
+
 from django.db.models import QuerySet
+
 from tarefas.models import Tarefa
 
 

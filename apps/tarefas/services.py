@@ -1,7 +1,9 @@
 from datetime import date, timedelta
 from typing import Any, Dict
+
 from django.db.models import QuerySet
 from rest_framework.exceptions import NotFound, ValidationError
+
 from tarefas.models import StatusTarefa, Tarefa
 from tarefas.repositories import TarefaRepository
 

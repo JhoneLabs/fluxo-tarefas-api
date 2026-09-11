@@ -1,4 +1,5 @@
 import os
+
 from celery import Celery
 
 # Define as configurações padrão do Django para o Celery

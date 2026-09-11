@@ -1,8 +1,9 @@
-from datetime import timedelta
-import os
 import sys
+from datetime import timedelta
 from pathlib import Path
+
 import environ
+from celery.schedules import crontab
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -134,14 +135,13 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_ENABLE_UTC = True
 
 # Celery Beat Schedule
-from celery.schedules import crontab
-
 CELERY_BEAT_SCHEDULE = {
     'verificar-tarefas-vencidas-diariamente': {
         'task': 'tarefas.tasks.verificar_tarefas_vencidas',
         'schedule': crontab(hour=0, minute=5),
     },
 }
+
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = '/static/'
