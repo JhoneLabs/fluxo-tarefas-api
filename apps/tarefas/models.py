@@ -6,6 +6,7 @@ class StatusTarefa(models.TextChoices):
     PENDENTE = 'pendente', 'Pendente'
     EM_ANDAMENTO = 'em_andamento', 'Em andamento'
     CONCLUIDA = 'concluida', 'Concluída'
+    VENCIDA = 'vencida', 'Vencida'
 
 
 class PrioridadeTarefa(models.TextChoices):

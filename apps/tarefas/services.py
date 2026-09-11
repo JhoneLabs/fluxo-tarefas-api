@@ -1,14 +1,16 @@
+from datetime import date, timedelta
 from typing import Any, Dict
 from django.db.models import QuerySet
 from rest_framework.exceptions import NotFound, ValidationError
-from tarefas.models import Tarefa
+from tarefas.models import StatusTarefa, Tarefa
 from tarefas.repositories import TarefaRepository
 
 
 class TarefaService:
     """
     Camada de serviço contendo as regras de negócio para gerenciamento de tarefas.
-    Aplica regras de isolamento garantindo retorno HTTP 404 quando o recurso não pertencer ao usuário.
+    Aplica regras de isolamento garantindo retorno HTTP 404 quando o recurso não pertencer ao usuário
+    e orquestra o disparo de tarefas assíncronas no Celery.
     """
 
     def __init__(self, repository: TarefaRepository = None):
@@ -34,7 +36,9 @@ class TarefaService:
         if not titulo or not str(titulo).strip():
             raise ValidationError({'titulo': 'O título é obrigatório.'})
 
-        return self.repository.criar(usuario=usuario, **dados_validados)
+        tarefa = self.repository.criar(usuario=usuario, **dados_validados)
+        self._verificar_e_disparar_notificacao(tarefa)
+        return tarefa
 
     def atualizar_tarefa(self, tarefa_id: int, usuario, dados_validados: Dict[str, Any]) -> Tarefa:
         """
@@ -42,7 +46,9 @@ class TarefaService:
         Se a tarefa não pertencer ao usuário, lança NotFound (HTTP 404).
         """
         tarefa = self.obter_tarefa(tarefa_id, usuario)
-        return self.repository.atualizar(tarefa, **dados_validados)
+        tarefa_atualizada = self.repository.atualizar(tarefa, **dados_validados)
+        self._verificar_e_disparar_notificacao(tarefa_atualizada)
+        return tarefa_atualizada
 
     def deletar_tarefa(self, tarefa_id: int, usuario) -> None:
         """
@@ -51,3 +57,17 @@ class TarefaService:
         """
         tarefa = self.obter_tarefa(tarefa_id, usuario)
         self.repository.deletar(tarefa)
+
+    def _verificar_e_disparar_notificacao(self, tarefa: Tarefa) -> None:
+        """
+        Verifica se a tarefa possui data de vencimento dentro das próximas 24h
+        e não está concluída, disparando a task assíncrona notificar_tarefa_proxima_vencimento no Celery.
+        """
+        if not tarefa.data_vencimento or tarefa.status_tarefa in [StatusTarefa.CONCLUIDA, StatusTarefa.VENCIDA]:
+            return
+
+        hoje = date.today()
+        # Vencimento hoje ou amanhã (próximas 24 horas)
+        if hoje <= tarefa.data_vencimento <= hoje + timedelta(days=1):
+            from tarefas.tasks import notificar_tarefa_proxima_vencimento
+            notificar_tarefa_proxima_vencimento.delay(tarefa.id)

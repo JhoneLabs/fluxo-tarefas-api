@@ -6,10 +6,11 @@ API REST para gerenciamento de fluxo de tarefas desenvolvida com Django REST Fra
 
 - **Python 3.12**
 - **Django 5.1** & **Django REST Framework**
+- **Celery 5.4** & **django-celery-beat** (Filas assíncronas e agendamento de tarefas periódicas)
 - **SimpleJWT** (Autenticação baseada em JSON Web Tokens com blacklist)
 - **django-filter** (Filtragem dinâmica e ordenação de recursos)
 - **PostgreSQL 16** (Banco de dados relacional)
-- **Redis 7** (Cache e mensageria)
+- **Redis 7** (Broker de mensageria, result backend do Celery e cache)
 - **Docker & Docker Compose** (Containerização do ambiente)
 - **django-environ** (Gerenciamento de configurações e variáveis de ambiente)
 - **django-cors-headers** (Controle de CORS)
@@ -38,30 +39,33 @@ fluxo-tarefas-api/
 │       ├── migrations/
 │       ├── tests/
 │       │   ├── __init__.py
-│       │   └── test_tarefas.py
+│       │   ├── test_tarefas.py
+│       │   └── test_tasks.py # Testes unitários das tarefas do Celery
 │       ├── __init__.py
 │       ├── apps.py
 │       ├── filters.py      # Filtros com django-filter
-│       ├── models.py       # Modelo Tarefa (com status e prioridade)
+│       ├── models.py       # Modelo Tarefa (status: pendente, em_andamento, concluida, vencida)
 │       ├── pagination.py   # Paginação customizada com page_size
 │       ├── repositories.py # Consultas e persistência isoladas por owner
 │       ├── serializers.py  # Validação e serialização
-│       ├── services.py     # Regras de negócio e proteção 404
+│       ├── services.py     # Regras de negócio e disparo de tasks Celery
+│       ├── tasks.py        # Tasks assíncronas e periódicas do Celery
 │       ├── urls.py         # Rotas da API de tarefas
 │       └── views.py        # Controllers / Handlers HTTP
 ├── config/               # Configurações do projeto
 │   ├── settings/         # Configurações modularizadas
 │   │   ├── __init__.py
-│   │   ├── base.py       # Configurações base compartilhadas
+│   │   ├── base.py       # Configurações base compartilhadas (com Celery)
 │   │   ├── dev.py        # Configurações de desenvolvimento
 │   │   └── production.py # Configurações de produção
 │   ├── asgi.py
+│   ├── celery.py         # Instância e autodiscover do Celery
 │   ├── urls.py
 │   └── wsgi.py
 ├── .dockerignore
 ├── .env.example          # Modelo de variáveis de ambiente
 ├── .gitignore
-├── docker-compose.yml    # Orquestração dos containers (web, db, redis)
+├── docker-compose.yml    # Orquestração dos containers (web, db, redis, celery_worker, celery_beat)
 ├── Dockerfile            # Imagem multi-stage Python 3.12
 ├── manage.py
 ├── README.md
@@ -87,7 +91,7 @@ cp .env.example .env
 
 ### 3. Construir e executar com Docker Compose
 
-Suba os serviços (`web`, `db` e `redis`):
+Suba todos os serviços (`web`, `db`, `redis`, `celery_worker` e `celery_beat`):
 
 ```bash
 docker compose up --build
@@ -110,6 +114,37 @@ docker compose exec web python manage.py migrate
 ```bash
 docker compose exec web python manage.py test usuarios tarefas
 ```
+
+---
+
+## Processamento Assíncrono com Celery
+
+O projeto utiliza o **Celery** integrado com **Redis** como Message Broker e Result Backend para executar tarefas em segundo plano e rotinas agendadas.
+
+### Serviços no Docker Compose
+- **`celery_worker`**: Processa as filas de mensagens e executa tasks em background.
+- **`celery_beat`**: Agendador periódico (`DatabaseScheduler`) que dispara tarefas com base em horários pré-definidos ou agendados no banco de dados.
+
+Comandos úteis para monitorar os logs do Celery:
+```bash
+# Acompanhar logs do Worker
+docker compose logs -f celery_worker
+
+# Acompanhar logs do Agendador Beat
+docker compose logs -f celery_beat
+```
+
+### Tasks Implementadas
+
+#### 1. Notificação de Vencimento Próximo (`notificar_tarefa_proxima_vencimento`)
+- **Tipo**: Task Assíncrona.
+- **Gatilho**: Disparada automaticamente na camada `TarefaService` sempre que uma tarefa for criada ou atualizada com `data_vencimento` dentro das próximas **24 horas** (e com status diferente de `concluida`).
+- **Comportamento**: Registra em log estruturado os dados do usuário, ID da tarefa, data de vencimento e status atual (preparada com ponto de extensão para integração futura com e-mails/SMTP ou push notifications).
+
+#### 2. Verificação Diária de Tarefas Vencidas (`verificar_tarefas_vencidas`)
+- **Tipo**: Task Periódica agendada via Celery Beat.
+- **Frequência**: Executada **1x ao dia**, configurada por padrão às `00:05` (meia-noite e cinco).
+- **Comportamento**: Localiza todas as tarefas com `data_vencimento` anterior à data atual (`< hoje`) cujo status não seja `concluida` nem `vencida`, e atualiza o campo `status_tarefa` em lote para o novo status **`vencida`**.
 
 ---
 
@@ -178,7 +213,7 @@ Todas as rotas de tarefas estão sob o prefixo `/api/tarefas/` e exigem autentic
 
 ### Valores Válidos para Campos
 
-- **`status_tarefa`**: `pendente` *(padrão)*, `em_andamento`, `concluida`
+- **`status_tarefa`**: `pendente` *(padrão)*, `em_andamento`, `concluida`, `vencida`
 - **`prioridade`**: `baixa`, `media` *(padrão)*, `alta`
 
 ---
@@ -188,7 +223,7 @@ Todas as rotas de tarefas estão sob o prefixo `/api/tarefas/` e exigem autentic
 O endpoint de listagem conta com suporte a filtros combináveis, ordenação e paginação padrão do Django REST Framework:
 
 #### 1. Filtros Disponíveis (via Query Params)
-- **`status_tarefa`**: Filtro exato (`pendente`, `em_andamento`, `concluida`).
+- **`status_tarefa`**: Filtro exato (`pendente`, `em_andamento`, `concluida`, `vencida`).
 - **`prioridade`**: Filtro exato (`baixa`, `media`, `alta`).
 - **`data_vencimento_inicio`**: Filtra tarefas com data de vencimento maior ou igual à data fornecida (`YYYY-MM-DD`).
 - **`data_vencimento_fim`**: Filtra tarefas com data de vencimento menor ou igual à data fornecida (`YYYY-MM-DD`).

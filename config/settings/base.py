@@ -44,6 +44,7 @@ THIRD_PARTY_APPS = [
     'rest_framework',
     'rest_framework_simplejwt.token_blacklist',
     'django_filters',
+    'django_celery_beat',
     'corsheaders',
 ]
 
@@ -121,6 +122,25 @@ LANGUAGE_CODE = 'pt-br'
 TIME_ZONE = 'America/Sao_Paulo'
 USE_I18N = True
 USE_TZ = True
+
+# Celery Configuration
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = REDIS_URL
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
+
+# Celery Beat Schedule
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    'verificar-tarefas-vencidas-diariamente': {
+        'task': 'tarefas.tasks.verificar_tarefas_vencidas',
+        'schedule': crontab(hour=0, minute=5),
+    },
+}
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = '/static/'
